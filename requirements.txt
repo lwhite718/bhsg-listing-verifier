@@ -1,4 +1,4 @@
 streamlit
 pandas
-googlesearch-python
 requests
+googlesearch-python
