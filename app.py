@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import requests
 from googlesearch import search
+import os
+from datetime import datetime
 
 st.set_page_config(page_title="BHSG Listing Verifier", layout="wide")
 st.title("🔍 BHSG Listing Verifier")
@@ -18,7 +20,7 @@ This app will perform Google searches for each business and check for presence o
 - Vagaro
 - StyleSeat
 
-Returns a verification status and matched URLs.
+Returns a verification status, matched URLs, platform count, and timestamp.
 """)
 
 uploaded_file = st.file_uploader("Upload your salon CSV", type=["csv"])
@@ -37,6 +39,7 @@ if uploaded_file:
 
     results = []
     search_limit = 5
+    verification_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     st.write("🔄 Running checks... this may take a moment.")
 
@@ -45,29 +48,32 @@ if uploaded_file:
         city = row["city"]
 
         query = f"{name} {city} hair salon"
-        matched_urls = []
+        yelp_url = ""
+        instagram_url = ""
+        vagaro_url = ""
+        styleseat_url = ""
         platforms_found = []
 
         try:
             search_results = list(search(query, num_results=search_limit))
 
             for url in search_results:
-                if any(p in url for p in ["yelp.com", "instagram.com", "vagaro.com", "styleseat.com"]):
-                    matched_urls.append(url)
-                    if "yelp.com" in url:
-                        platforms_found.append("Yelp")
-                    elif "instagram.com" in url:
-                        platforms_found.append("Instagram")
-                    elif "vagaro.com" in url:
-                        platforms_found.append("Vagaro")
-                    elif "styleseat.com" in url:
-                        platforms_found.append("StyleSeat")
+                if "yelp.com" in url and not yelp_url:
+                    yelp_url = url
+                    platforms_found.append("Yelp")
+                elif "instagram.com" in url and not instagram_url:
+                    instagram_url = url
+                    platforms_found.append("Instagram")
+                elif "vagaro.com" in url and not vagaro_url:
+                    vagaro_url = url
+                    platforms_found.append("Vagaro")
+                elif "styleseat.com" in url and not styleseat_url:
+                    styleseat_url = url
+                    platforms_found.append("StyleSeat")
         except Exception as e:
             search_results = []
-            matched_urls = []
-            platforms_found = []
 
-        if matched_urls:
+        if any([yelp_url, instagram_url, vagaro_url, styleseat_url]):
             status = "Verified"
         elif search_results:
             status = "Maybe"
@@ -79,18 +85,33 @@ if uploaded_file:
             "City": city,
             "Verification Status": status,
             "Found On": ", ".join(set(platforms_found)),
-            "Matched URLs": " | ".join(matched_urls)
+            "Platform Count": len(set(platforms_found)),
+            "Yelp URL": yelp_url,
+            "Instagram URL": instagram_url,
+            "Vagaro URL": vagaro_url,
+            "StyleSeat URL": styleseat_url,
+            "Verified At": verification_time
         })
 
     result_df = pd.DataFrame(results)
 
     st.success("✅ Done! Preview below:")
-    st.dataframe(result_df)
+
+    filter_option = st.selectbox("Filter by Verification Status", ["All"] + sorted(result_df["Verification Status"].unique()))
+    if filter_option != "All":
+        filtered_df = result_df[result_df["Verification Status"] == filter_option]
+    else:
+        filtered_df = result_df
+
+    st.dataframe(filtered_df)
+
+    original_filename = os.path.splitext(uploaded_file.name)[0]
+    output_filename = f"{original_filename}_verified_salons.csv"
 
     csv = result_df.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="Download Verified Listings CSV",
         data=csv,
-        file_name="verified_salons.csv",
+        file_name=output_filename,
         mime="text/csv"
     )
